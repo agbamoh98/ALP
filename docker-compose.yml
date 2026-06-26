@@ -1,0 +1,175 @@
+version: "3.9"
+
+# ─── Networks ─────────────────────────────────────────────────────────────────
+networks:
+  alp-net:
+    driver: bridge
+
+# ─── Volumes ──────────────────────────────────────────────────────────────────
+volumes:
+  postgres-data:
+
+# ─── Services ─────────────────────────────────────────────────────────────────
+services:
+
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: alp-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_MULTIPLE_DATABASES: alp_auth,alp_resources,alp_ai,alp_quiz,alp_flashcards,alp_progress
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh
+    ports:
+      - "5432:5432"
+    networks:
+      - alp-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Frontend ─────────────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: alp-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    networks:
+      - alp-net
+    depends_on:
+      - auth-service
+
+  # ── Auth Service ──────────────────────────────────────────────────────────────
+  auth-service:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+    container_name: alp-auth-service
+    restart: unless-stopped
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/alp_auth
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      JWT_SECRET: ${JWT_SECRET:-change-this-to-a-secure-random-secret-at-least-256-bits}
+      JWT_EXPIRATION_MS: ${JWT_EXPIRATION_MS:-86400000}
+    ports:
+      - "8081:8081"
+    networks:
+      - alp-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8081/api/auth/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ── Learning Resource Service ─────────────────────────────────────────────────
+  learning-resource-service:
+    build:
+      context: ./services/learning-resource-service
+      dockerfile: Dockerfile
+    container_name: alp-resource-service
+    restart: unless-stopped
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/alp_resources
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      MAX_FILE_SIZE: ${MAX_FILE_SIZE:-10MB}
+    ports:
+      - "8082:8082"
+    networks:
+      - alp-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── AI Service ────────────────────────────────────────────────────────────────
+  ai-service:
+    build:
+      context: ./services/ai-service
+      dockerfile: Dockerfile
+    container_name: alp-ai-service
+    restart: unless-stopped
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/alp_ai
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      AI_PROVIDER: ${AI_PROVIDER:-openai}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+    ports:
+      - "8083:8083"
+    networks:
+      - alp-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── Quiz Service ──────────────────────────────────────────────────────────────
+  quiz-service:
+    build:
+      context: ./services/quiz-service
+      dockerfile: Dockerfile
+    container_name: alp-quiz-service
+    restart: unless-stopped
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/alp_quiz
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+    ports:
+      - "8084:8084"
+    networks:
+      - alp-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── Flashcard Service ─────────────────────────────────────────────────────────
+  flashcard-service:
+    build:
+      context: ./services/flashcard-service
+      dockerfile: Dockerfile
+    container_name: alp-flashcard-service
+    restart: unless-stopped
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/alp_flashcards
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+    ports:
+      - "8085:8085"
+    networks:
+      - alp-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── Progress Service ──────────────────────────────────────────────────────────
+  progress-service:
+    build:
+      context: ./services/progress-service
+      dockerfile: Dockerfile
+    container_name: alp-progress-service
+    restart: unless-stopped
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/alp_progress
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+    ports:
+      - "8086:8086"
+    networks:
+      - alp-net
+    depends_on:
+      postgres:
+        condition: service_healthy

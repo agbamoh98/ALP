@@ -1,0 +1,20 @@
+server:
+  port: 8086
+  servlet:
+    context-path: /api/progress
+spring:
+  application:
+    name: progress-service
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/alp_progress}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info

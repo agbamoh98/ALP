@@ -1,0 +1,20 @@
+server:
+  port: 8084
+  servlet:
+    context-path: /api/quizzes
+spring:
+  application:
+    name: quiz-service
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/alp_quiz}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info

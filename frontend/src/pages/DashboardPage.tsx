@@ -1,0 +1,225 @@
+import {
+  Box,
+  Container,
+  Typography,
+  Grid,
+  Card,
+  CardContent,
+  CardActionArea,
+  Chip,
+  Stack,
+} from "@mui/material";
+import {
+  CloudUpload,
+  AutoStories,
+  Quiz,
+  TrendingUp,
+  Psychology,
+  Add,
+} from "@mui/icons-material";
+import Layout from "../components/layout/Layout";
+import { useAuth } from "../context/AuthContext";
+
+const quickActions = [
+  {
+    icon: <CloudUpload sx={{ fontSize: 28, color: "#6C63FF" }} />,
+    title: "Upload Resource",
+    description: "Add a PDF or paste text to study",
+    color: "rgba(108, 99, 255, 0.08)",
+    available: false,
+  },
+  {
+    icon: <Psychology sx={{ fontSize: 28, color: "#FF6584" }} />,
+    title: "AI Tutor",
+    description: "Ask questions about your material",
+    color: "rgba(255, 101, 132, 0.08)",
+    available: false,
+  },
+  {
+    icon: <AutoStories sx={{ fontSize: 28, color: "#22C55E" }} />,
+    title: "Flashcards",
+    description: "Review and practice flashcards",
+    color: "rgba(34, 197, 94, 0.08)",
+    available: false,
+  },
+  {
+    icon: <Quiz sx={{ fontSize: 28, color: "#F59E0B" }} />,
+    title: "Take a Quiz",
+    description: "Test your knowledge",
+    color: "rgba(245, 158, 11, 0.08)",
+    available: false,
+  },
+];
+
+const stats = [
+  { label: "Resources", value: "0", icon: <CloudUpload />, color: "#6C63FF" },
+  { label: "Flashcards", value: "0", icon: <AutoStories />, color: "#22C55E" },
+  { label: "Quizzes Taken", value: "0", icon: <Quiz />, color: "#F59E0B" },
+  { label: "Study Minutes", value: "0", icon: <TrendingUp />, color: "#FF6584" },
+];
+
+export default function DashboardPage() {
+  const { user } = useAuth();
+
+  const greeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return "Good morning";
+    if (hour < 18) return "Good afternoon";
+    return "Good evening";
+  };
+
+  return (
+    <Layout>
+      <Box sx={{ bgcolor: "background.default", minHeight: "100vh", py: 5 }}>
+        <Container maxWidth="lg">
+          {/* Header */}
+          <Box sx={{ mb: 5 }}>
+            <Typography variant="h4" fontWeight={700} sx={{ mb: 0.5 }}>
+              {greeting()}, {user?.firstName} 👋
+            </Typography>
+            <Typography variant="body1" color="text.secondary">
+              Ready to learn something today?
+            </Typography>
+            <Chip
+              label={`${user?.role} Plan`}
+              size="small"
+              sx={{
+                mt: 1.5,
+                bgcolor:
+                  user?.role === "PREMIUM"
+                    ? "rgba(255, 101, 132, 0.1)"
+                    : "rgba(108, 99, 255, 0.1)",
+                color: user?.role === "PREMIUM" ? "#FF6584" : "#6C63FF",
+                fontWeight: 600,
+              }}
+            />
+          </Box>
+
+          {/* Stats */}
+          <Grid container spacing={3} sx={{ mb: 5 }}>
+            {stats.map((stat) => (
+              <Grid item xs={6} md={3} key={stat.label}>
+                <Card sx={{ height: "100%" }}>
+                  <CardContent sx={{ p: 3 }}>
+                    <Box
+                      sx={{
+                        display: "inline-flex",
+                        p: 1.25,
+                        borderRadius: 2,
+                        bgcolor: `${stat.color}1A`,
+                        color: stat.color,
+                        mb: 2,
+                      }}
+                    >
+                      {stat.icon}
+                    </Box>
+                    <Typography variant="h4" fontWeight={800}>
+                      {stat.value}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {stat.label}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
+
+          {/* Quick Actions */}
+          <Typography variant="h5" fontWeight={700} sx={{ mb: 3 }}>
+            Quick Actions
+          </Typography>
+          <Grid container spacing={3} sx={{ mb: 5 }}>
+            {quickActions.map((action) => (
+              <Grid item xs={12} sm={6} md={3} key={action.title}>
+                <Card
+                  sx={{
+                    height: "100%",
+                    opacity: action.available ? 1 : 0.65,
+                    cursor: action.available ? "pointer" : "default",
+                  }}
+                >
+                  <CardActionArea
+                    disabled={!action.available}
+                    sx={{ height: "100%" }}
+                  >
+                    <CardContent sx={{ p: 3 }}>
+                      <Box
+                        sx={{
+                          display: "inline-flex",
+                          p: 1.5,
+                          borderRadius: 2,
+                          bgcolor: action.color,
+                          mb: 2,
+                        }}
+                      >
+                        {action.icon}
+                      </Box>
+                      <Typography variant="h6" sx={{ mb: 0.5 }}>
+                        {action.title}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {action.description}
+                      </Typography>
+                      {!action.available && (
+                        <Chip
+                          label="Coming in v0.2"
+                          size="small"
+                          sx={{ mt: 1.5, fontSize: "0.7rem" }}
+                        />
+                      )}
+                    </CardContent>
+                  </CardActionArea>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
+
+          {/* Empty State */}
+          <Card
+            sx={{
+              p: 2,
+              textAlign: "center",
+              border: "2px dashed",
+              borderColor: "divider",
+              bgcolor: "transparent",
+              boxShadow: "none",
+            }}
+          >
+            <CardContent sx={{ py: 6 }}>
+              <Box
+                sx={{
+                  display: "inline-flex",
+                  p: 2,
+                  borderRadius: "50%",
+                  bgcolor: "rgba(108, 99, 255, 0.1)",
+                  mb: 2,
+                }}
+              >
+                <Add sx={{ fontSize: 32, color: "primary.main" }} />
+              </Box>
+              <Typography variant="h6" fontWeight={600} sx={{ mb: 1 }}>
+                No learning resources yet
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Upload a PDF or paste text to get started.
+                <br />
+                Resource upload is coming in Version 0.2.
+              </Typography>
+            </CardContent>
+          </Card>
+
+          {/* Version badge */}
+          <Stack direction="row" justifyContent="center" sx={{ mt: 6 }}>
+            <Chip
+              label="Version 0.1 — Foundation"
+              variant="outlined"
+              size="small"
+              sx={{ color: "text.secondary", borderColor: "divider" }}
+            />
+          </Stack>
+        </Container>
+      </Box>
+    </Layout>
+  );
+}
