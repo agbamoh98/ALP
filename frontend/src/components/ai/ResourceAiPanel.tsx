@@ -1,9 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   Alert,
   Box,
   Button,
-  Chip,
   CircularProgress,
   FormControl,
   InputLabel,
@@ -12,15 +11,20 @@ import {
   Select,
   Tab,
   Tabs,
-  TextField,
   Typography,
 } from "@mui/material";
 import {
+  AutoAwesome,
   AutoStories,
   Psychology,
   Quiz,
   Summarize,
 } from "@mui/icons-material";
+import FlashcardDeck from "../learning/FlashcardDeck";
+import QuizPlayer from "../learning/QuizPlayer";
+import SummaryDisplay from "../learning/SummaryDisplay";
+import TutorChat from "../learning/TutorChat";
+import { generateButtonSx, GRADIENT_PRIMARY } from "../learning/sharedStyles";
 import {
   aiApi,
   type AiResponse,
@@ -29,12 +33,15 @@ import {
   type QuestionType,
   type SummaryType,
 } from "../../api/aiApi";
+import { parseFlashcards, parseQuizQuestions } from "../../utils/parseAiJson";
 
 interface ResourceAiPanelProps {
   resourceId: string;
   content: string;
   initialTab?: number;
 }
+
+const TAB_ACCENTS = ["#6C63FF", "#22C55E", "#F59E0B", "#FF6584"];
 
 const SUMMARY_OPTIONS: { value: SummaryType; label: string }[] = [
   { value: "short_summary", label: "Short summary" },
@@ -53,29 +60,92 @@ function extractErrorMessage(err: unknown): string {
   return "Something went wrong. Please try again.";
 }
 
-function ResultBlock({ result, meta }: { result: AiResponse; meta?: boolean }) {
+function AiMeta({ result }: { result: AiResponse }) {
   return (
-    <Box>
-      <Paper
-        elevation={0}
-        sx={{
-          p: 3,
-          border: "1px solid",
-          borderColor: "divider",
-          borderRadius: 2,
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-word",
-          lineHeight: 1.7,
-          fontSize: "0.95rem",
-        }}
-      >
-        {result.result}
-      </Paper>
-      {meta && (
-        <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: "block" }}>
-          {result.model} · {result.totalTokens.toLocaleString()} tokens · {(result.responseTimeMs / 1000).toFixed(1)}s
-        </Typography>
-      )}
+    <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: "block", textAlign: "center" }}>
+      {result.model} · {result.totalTokens.toLocaleString()} tokens · {(result.responseTimeMs / 1000).toFixed(1)}s
+    </Typography>
+  );
+}
+
+function Toolbar({ children }: { children: ReactNode }) {
+  return (
+    <Paper
+      elevation={0}
+      sx={{
+        p: 2,
+        mb: 3,
+        borderRadius: 3,
+        bgcolor: "rgba(108, 99, 255, 0.03)",
+        border: "1px solid rgba(108, 99, 255, 0.08)",
+        display: "flex",
+        gap: 2,
+        flexWrap: "wrap",
+        alignItems: "center",
+      }}
+    >
+      {children}
+    </Paper>
+  );
+}
+
+function GenerateBtn({ loading, label, onClick }: { loading: boolean; label: string; onClick: () => void }) {
+  return (
+    <Button variant="contained" onClick={onClick} disabled={loading} sx={generateButtonSx}>
+      {loading ? <CircularProgress size={22} color="inherit" /> : label}
+    </Button>
+  );
+}
+
+function FlashcardResult({ result }: { result: AiResponse }) {
+  try {
+    return (
+      <Box>
+        <FlashcardDeck cards={parseFlashcards(result.result)} />
+        <AiMeta result={result} />
+      </Box>
+    );
+  } catch {
+    return (
+      <Alert severity="warning" sx={{ borderRadius: 2 }}>
+        Could not parse flashcards — the AI may have returned invalid JSON. Try generating again.
+      </Alert>
+    );
+  }
+}
+
+function QuizResult({ result }: { result: AiResponse }) {
+  try {
+    return (
+      <Box>
+        <QuizPlayer questions={parseQuizQuestions(result.result)} />
+        <AiMeta result={result} />
+      </Box>
+    );
+  } catch {
+    return (
+      <Alert severity="warning" sx={{ borderRadius: 2 }}>
+        Could not parse quiz — the AI may have returned invalid JSON. Try generating again.
+      </Alert>
+    );
+  }
+}
+
+function EmptyHint({ text }: { text: string }) {
+  return (
+    <Box
+      sx={{
+        py: 6,
+        textAlign: "center",
+        color: "text.secondary",
+        borderRadius: 3,
+        border: "2px dashed",
+        borderColor: "divider",
+        bgcolor: "rgba(108, 99, 255, 0.02)",
+      }}
+    >
+      <AutoAwesome sx={{ fontSize: 36, color: "primary.light", mb: 1 }} />
+      <Typography variant="body2">{text}</Typography>
     </Box>
   );
 }
@@ -99,7 +169,6 @@ export default function ResourceAiPanel({ resourceId, content, initialTab = 0 }:
 
   const [chatInput, setChatInput] = useState("");
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
-  const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     aiApi.status()
@@ -107,16 +176,11 @@ export default function ResourceAiPanel({ resourceId, content, initialTab = 0 }:
       .catch(() => setConfigured(false));
   }, []);
 
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatHistory, loading]);
-
   const run = async (fn: () => Promise<AiResponse>, onSuccess: (r: AiResponse) => void) => {
     setLoading(true);
     setError(null);
     try {
-      const result = await fn();
-      onSuccess(result);
+      onSuccess(await fn());
     } catch (err) {
       setError(extractErrorMessage(err));
     } finally {
@@ -124,55 +188,35 @@ export default function ResourceAiPanel({ resourceId, content, initialTab = 0 }:
     }
   };
 
-  const handleSummarize = () =>
-    run(
-      () => aiApi.summarize({ resourceId, content, summaryType }),
-      setSummaryResult
-    );
-
-  const handleFlashcards = () =>
-    run(
-      () => aiApi.flashcards({ resourceId, content, count: flashcardCount }),
-      setFlashcardResult
-    );
-
-  const handleQuiz = () =>
-    run(
-      () => aiApi.quiz({ resourceId, content, questionType, difficulty, count: quizCount }),
-      setQuizResult
-    );
-
   const handleChat = () => {
     const message = chatInput.trim();
     if (!message) return;
-
-    const userMsg: ChatMessage = { role: "user", content: message };
     const historyForApi = chatHistory;
     setChatInput("");
-    setChatHistory((prev) => [...prev, userMsg]);
-
+    setChatHistory((prev) => [...prev, { role: "user", content: message }]);
     setLoading(true);
     setError(null);
     aiApi
       .chat({ resourceId, content, message, history: historyForApi })
-      .then((result: AiResponse) => {
-        setChatHistory((prev) => [...prev, { role: "assistant", content: result.result }]);
-      })
+      .then((result) => setChatHistory((prev) => [...prev, { role: "assistant", content: result.result }]))
       .catch((err: unknown) => setError(extractErrorMessage(err)))
       .finally(() => setLoading(false));
   };
 
   if (configured === null) {
     return (
-      <Paper elevation={0} sx={{ mt: 3, p: 4, border: "1px solid", borderColor: "divider", borderRadius: 3, textAlign: "center" }}>
-        <CircularProgress size={28} />
+      <Paper elevation={0} sx={{ mt: 3, p: 5, borderRadius: 4, textAlign: "center", border: "1px solid", borderColor: "divider" }}>
+        <CircularProgress size={32} sx={{ color: "primary.main" }} />
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+          Checking AI service…
+        </Typography>
       </Paper>
     );
   }
 
   if (!configured) {
     return (
-      <Alert severity="warning" sx={{ mt: 3 }}>
+      <Alert severity="warning" sx={{ mt: 3, borderRadius: 2 }}>
         AI features are not configured. Add your <code>OPENAI_API_KEY</code> to{" "}
         <code>services/ai-service/.env</code> and restart the AI service.
       </Alert>
@@ -184,17 +228,62 @@ export default function ResourceAiPanel({ resourceId, content, initialTab = 0 }:
       elevation={0}
       sx={{
         mt: 3,
-        border: "1px solid",
-        borderColor: "divider",
-        borderRadius: 3,
+        borderRadius: 4,
         overflow: "hidden",
+        boxShadow: "0 8px 32px rgba(108, 99, 255, 0.1)",
+        border: "1px solid rgba(108, 99, 255, 0.12)",
       }}
     >
-      <Box sx={{ px: 2, pt: 1, borderBottom: 1, borderColor: "divider", bgcolor: "rgba(108, 99, 255, 0.03)" }}>
-        <Typography variant="subtitle1" fontWeight={700} sx={{ px: 1, pt: 1.5, pb: 0.5 }}>
-          AI Learning Tools
-        </Typography>
-        <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto">
+      {/* Header */}
+      <Box
+        sx={{
+          px: 3,
+          pt: 2.5,
+          pb: 0,
+          background: `linear-gradient(135deg, rgba(108,99,255,0.08) 0%, rgba(255,101,132,0.06) 100%)`,
+          borderBottom: "1px solid rgba(108, 99, 255, 0.1)",
+        }}
+      >
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 1.5 }}>
+          <Box
+            sx={{
+              p: 1,
+              borderRadius: 2,
+              background: GRADIENT_PRIMARY,
+              display: "flex",
+              boxShadow: "0 4px 12px rgba(108, 99, 255, 0.3)",
+            }}
+          >
+            <AutoAwesome sx={{ color: "#fff", fontSize: 22 }} />
+          </Box>
+          <Box>
+            <Typography variant="h6" fontWeight={800} lineHeight={1.2}>
+              AI Learning Tools
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Powered by your uploaded material
+            </Typography>
+          </Box>
+        </Box>
+
+        <Tabs
+          value={tab}
+          onChange={(_, v) => setTab(v)}
+          variant="scrollable"
+          scrollButtons="auto"
+          sx={{
+            "& .MuiTab-root": {
+              fontWeight: 600,
+              minHeight: 48,
+              "&.Mui-selected": { color: TAB_ACCENTS[tab] },
+            },
+            "& .MuiTabs-indicator": {
+              height: 3,
+              borderRadius: "3px 3px 0 0",
+              bgcolor: TAB_ACCENTS[tab],
+            },
+          }}
+        >
           <Tab icon={<Summarize fontSize="small" />} iconPosition="start" label="Summary" />
           <Tab icon={<AutoStories fontSize="small" />} iconPosition="start" label="Flashcards" />
           <Tab icon={<Quiz fontSize="small" />} iconPosition="start" label="Quiz" />
@@ -202,69 +291,63 @@ export default function ResourceAiPanel({ resourceId, content, initialTab = 0 }:
         </Tabs>
       </Box>
 
-      <Box sx={{ p: 3 }}>
+      <Box sx={{ p: { xs: 2, sm: 3 } }}>
         {error && (
-          <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
+          <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }} onClose={() => setError(null)}>
             {error}
           </Alert>
         )}
 
         {tab === 0 && (
           <Box>
-            <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap", alignItems: "center", mb: 2 }}>
+            <Toolbar>
               <FormControl size="small" sx={{ minWidth: 220 }}>
                 <InputLabel>Summary type</InputLabel>
-                <Select
-                  value={summaryType}
-                  label="Summary type"
-                  onChange={(e) => setSummaryType(e.target.value as SummaryType)}
-                >
+                <Select value={summaryType} label="Summary type" onChange={(e) => setSummaryType(e.target.value as SummaryType)}>
                   {SUMMARY_OPTIONS.map((o) => (
                     <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>
                   ))}
                 </Select>
               </FormControl>
-              <Button variant="contained" onClick={handleSummarize} disabled={loading}>
-                {loading ? <CircularProgress size={22} color="inherit" /> : "Generate Summary"}
-              </Button>
-            </Box>
-            {summaryResult && <ResultBlock result={summaryResult} meta />}
+              <GenerateBtn loading={loading} label="Generate Summary" onClick={() => run(
+                () => aiApi.summarize({ resourceId, content, summaryType }),
+                setSummaryResult
+              )} />
+            </Toolbar>
+            {summaryResult ? <SummaryDisplay result={summaryResult} /> : (
+              <EmptyHint text="Pick a summary style and generate an AI overview of this resource." />
+            )}
           </Box>
         )}
 
         {tab === 1 && (
           <Box>
-            <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap", alignItems: "center", mb: 2 }}>
+            <Toolbar>
               <FormControl size="small" sx={{ minWidth: 140 }}>
                 <InputLabel>Count</InputLabel>
-                <Select
-                  value={flashcardCount}
-                  label="Count"
-                  onChange={(e) => setFlashcardCount(Number(e.target.value))}
-                >
+                <Select value={flashcardCount} label="Count" onChange={(e) => setFlashcardCount(Number(e.target.value))}>
                   {[5, 10, 15, 20, 30].map((n) => (
                     <MenuItem key={n} value={n}>{n} cards</MenuItem>
                   ))}
                 </Select>
               </FormControl>
-              <Button variant="contained" onClick={handleFlashcards} disabled={loading}>
-                {loading ? <CircularProgress size={22} color="inherit" /> : "Generate Flashcards"}
-              </Button>
-            </Box>
-            {flashcardResult && <ResultBlock result={flashcardResult} meta />}
+              <GenerateBtn loading={loading} label="Generate Flashcards" onClick={() => run(
+                () => aiApi.flashcards({ resourceId, content, count: flashcardCount }),
+                setFlashcardResult
+              )} />
+            </Toolbar>
+            {flashcardResult ? <FlashcardResult result={flashcardResult} /> : (
+              <EmptyHint text="Generate flip cards to study key concepts from this material." />
+            )}
           </Box>
         )}
 
         {tab === 2 && (
           <Box>
-            <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap", alignItems: "center", mb: 2 }}>
+            <Toolbar>
               <FormControl size="small" sx={{ minWidth: 160 }}>
                 <InputLabel>Type</InputLabel>
-                <Select
-                  value={questionType}
-                  label="Type"
-                  onChange={(e) => setQuestionType(e.target.value as QuestionType)}
-                >
+                <Select value={questionType} label="Type" onChange={(e) => setQuestionType(e.target.value as QuestionType)}>
                   <MenuItem value="multiple_choice">Multiple choice</MenuItem>
                   <MenuItem value="true_false">True / False</MenuItem>
                   <MenuItem value="short_answer">Short answer</MenuItem>
@@ -272,11 +355,7 @@ export default function ResourceAiPanel({ resourceId, content, initialTab = 0 }:
               </FormControl>
               <FormControl size="small" sx={{ minWidth: 120 }}>
                 <InputLabel>Difficulty</InputLabel>
-                <Select
-                  value={difficulty}
-                  label="Difficulty"
-                  onChange={(e) => setDifficulty(e.target.value as Difficulty)}
-                >
+                <Select value={difficulty} label="Difficulty" onChange={(e) => setDifficulty(e.target.value as Difficulty)}>
                   <MenuItem value="easy">Easy</MenuItem>
                   <MenuItem value="medium">Medium</MenuItem>
                   <MenuItem value="hard">Hard</MenuItem>
@@ -284,101 +363,31 @@ export default function ResourceAiPanel({ resourceId, content, initialTab = 0 }:
               </FormControl>
               <FormControl size="small" sx={{ minWidth: 100 }}>
                 <InputLabel>Count</InputLabel>
-                <Select
-                  value={quizCount}
-                  label="Count"
-                  onChange={(e) => setQuizCount(Number(e.target.value))}
-                >
+                <Select value={quizCount} label="Count" onChange={(e) => setQuizCount(Number(e.target.value))}>
                   {[3, 5, 10, 15].map((n) => (
                     <MenuItem key={n} value={n}>{n}</MenuItem>
                   ))}
                 </Select>
               </FormControl>
-              <Button variant="contained" onClick={handleQuiz} disabled={loading}>
-                {loading ? <CircularProgress size={22} color="inherit" /> : "Generate Quiz"}
-              </Button>
-            </Box>
-            {quizResult && <ResultBlock result={quizResult} meta />}
+              <GenerateBtn loading={loading} label="Generate Quiz" onClick={() => run(
+                () => aiApi.quiz({ resourceId, content, questionType, difficulty, count: quizCount }),
+                setQuizResult
+              )} />
+            </Toolbar>
+            {quizResult ? <QuizResult result={quizResult} /> : (
+              <EmptyHint text="Generate an interactive quiz to test your understanding." />
+            )}
           </Box>
         )}
 
         {tab === 3 && (
-          <Box>
-            <Box
-              sx={{
-                maxHeight: 360,
-                overflow: "auto",
-                mb: 2,
-                display: "flex",
-                flexDirection: "column",
-                gap: 1.5,
-              }}
-            >
-              {chatHistory.length === 0 && (
-                <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: "center" }}>
-                  Ask anything about this resource. The AI Tutor uses the document as context.
-                </Typography>
-              )}
-              {chatHistory.map((msg, i) => (
-                <Box
-                  key={i}
-                  sx={{
-                    alignSelf: msg.role === "user" ? "flex-end" : "flex-start",
-                    maxWidth: "85%",
-                  }}
-                >
-                  <Chip
-                    label={msg.role === "user" ? "You" : "Tutor"}
-                    size="small"
-                    sx={{ mb: 0.5, fontSize: "0.7rem" }}
-                    color={msg.role === "user" ? "primary" : "default"}
-                  />
-                  <Paper
-                    elevation={0}
-                    sx={{
-                      p: 2,
-                      bgcolor: msg.role === "user" ? "rgba(108, 99, 255, 0.08)" : "grey.50",
-                      borderRadius: 2,
-                      whiteSpace: "pre-wrap",
-                      wordBreak: "break-word",
-                      fontSize: "0.95rem",
-                      lineHeight: 1.6,
-                    }}
-                  >
-                    {msg.content}
-                  </Paper>
-                </Box>
-              ))}
-              {loading && tab === 3 && (
-                <Box sx={{ display: "flex", alignItems: "center", gap: 1, py: 1 }}>
-                  <CircularProgress size={18} />
-                  <Typography variant="body2" color="text.secondary">Thinking…</Typography>
-                </Box>
-              )}
-              <div ref={chatEndRef} />
-            </Box>
-            <Box sx={{ display: "flex", gap: 1 }}>
-              <TextField
-                fullWidth
-                size="small"
-                placeholder="Ask a question about this material…"
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    handleChat();
-                  }
-                }}
-                disabled={loading}
-                multiline
-                maxRows={3}
-              />
-              <Button variant="contained" onClick={handleChat} disabled={loading || !chatInput.trim()} sx={{ minWidth: 88 }}>
-                Send
-              </Button>
-            </Box>
-          </Box>
+          <TutorChat
+            history={chatHistory}
+            input={chatInput}
+            loading={loading}
+            onInputChange={setChatInput}
+            onSend={handleChat}
+          />
         )}
       </Box>
     </Paper>
