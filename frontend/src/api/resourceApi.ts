@@ -41,4 +41,9 @@ export const resourceApi = {
     const res = await apiClient.get<{ count: number }>("/api/resources/count");
     return res.data.count;
   },
+
+  limits: async (): Promise<{ plan: string; used: number; max: number }> => {
+    const res = await apiClient.get<{ plan: string; used: number; max: number }>("/api/resources/limits");
+    return res.data;
+  },
 };

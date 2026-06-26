@@ -1,5 +1,6 @@
 package com.alp.resource.controller;
 
+import com.alp.resource.dto.PlanLimitsResponse;
 import com.alp.resource.dto.ResourceResponse;
 import com.alp.resource.dto.TextUploadRequest;
 import com.alp.resource.security.AuthenticatedUser;
@@ -70,6 +71,13 @@ public class LearningResourceController {
     ) {
         long count = resourceService.countResources(user.getId());
         return ResponseEntity.ok(Map.of("count", count));
+    }
+
+    @GetMapping("/limits")
+    public ResponseEntity<PlanLimitsResponse> limits(
+            @AuthenticationPrincipal AuthenticatedUser user
+    ) {
+        return ResponseEntity.ok(resourceService.getPlanLimits(user.getId(), user.getRole()));
     }
 
     /**

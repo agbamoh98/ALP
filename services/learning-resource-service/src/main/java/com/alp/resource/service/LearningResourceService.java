@@ -1,7 +1,9 @@
 package com.alp.resource.service;
 
+import com.alp.resource.dto.PlanLimitsResponse;
 import com.alp.resource.dto.ResourceResponse;
 import com.alp.resource.dto.TextUploadRequest;
+import com.alp.resource.util.TierLimits;
 import com.alp.resource.exception.AppException;
 import com.alp.resource.model.LearningResource;
 import com.alp.resource.model.ResourceType;
@@ -31,11 +33,18 @@ public class LearningResourceService {
     @Value("${upload.max-size-bytes.premium}")
     private long premiumMaxBytes;
 
+    @Value("${limits.resources.free}")
+    private int freeMaxResources;
+
+    @Value("${limits.resources.premium}")
+    private int premiumMaxResources;
+
     // ─── Upload PDF ──────────────────────────────────────────────────────────
 
     @Transactional
     public ResourceResponse uploadPdf(MultipartFile file, String title, UUID userId, String userRole) {
         validateFile(file);
+        enforceResourceCountLimit(userId, userRole);
         enforceUploadLimit(file.getSize(), userRole);
 
         String content = pdfExtractorService.extractText(file);
@@ -61,6 +70,7 @@ public class LearningResourceService {
 
     @Transactional
     public ResourceResponse uploadText(TextUploadRequest request, UUID userId, String userRole) {
+        enforceResourceCountLimit(userId, userRole);
         long contentBytes = request.getContent().getBytes().length;
         enforceUploadLimit(contentBytes, userRole);
 
@@ -93,6 +103,18 @@ public class LearningResourceService {
         return repository.countByUserId(userId);
     }
 
+    @Transactional(readOnly = true)
+    public PlanLimitsResponse getPlanLimits(UUID userId, String userRole) {
+        long used = repository.countByUserId(userId);
+        long max = TierLimits.limitForRole(userRole, freeMaxResources, premiumMaxResources);
+        return PlanLimitsResponse.builder()
+                .plan(userRole)
+                .used(used)
+                .max(max)
+                .resourceType("resources")
+                .build();
+    }
+
     // ─── Get single ──────────────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
@@ -122,6 +144,20 @@ public class LearningResourceService {
         String contentType = file.getContentType();
         if (contentType == null || !contentType.equalsIgnoreCase("application/pdf")) {
             throw new AppException("Only PDF files are accepted.", HttpStatus.UNSUPPORTED_MEDIA_TYPE);
+        }
+    }
+
+    private void enforceResourceCountLimit(UUID userId, String role) {
+        long max = TierLimits.limitForRole(role, freeMaxResources, premiumMaxResources);
+        long current = repository.countByUserId(userId);
+        if (current >= max) {
+            String message = TierLimits.isPremiumTier(role)
+                    ? String.format("Plan limit reached: maximum %d saved resources.", max)
+                    : String.format(
+                            "Free plan limit: up to %d saved resources. Delete an old file or upgrade to Premium.",
+                            max
+                    );
+            throw new AppException(message, HttpStatus.FORBIDDEN);
         }
     }
 

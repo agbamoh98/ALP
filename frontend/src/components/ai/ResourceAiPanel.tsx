@@ -24,7 +24,20 @@ import FlashcardDeck from "../learning/FlashcardDeck";
 import QuizPlayer from "../learning/QuizPlayer";
 import SummaryDisplay from "../learning/SummaryDisplay";
 import TutorChat from "../learning/TutorChat";
+import SavedItemsBar from "../learning/SavedItemsBar";
 import { generateButtonSx, GRADIENT_PRIMARY } from "../learning/sharedStyles";
+import { useAuth } from "../../context/AuthContext";
+import { flashcardApi, type DeckSummary } from "../../api/flashcardApi";
+import { quizApi, type QuizSummary } from "../../api/quizApi";
+import {
+  buildCountOptions,
+  cardsPerDeckMax,
+  FREE_TIER,
+  isPremiumTier,
+  PREMIUM_TIER,
+  PREMIUM_SUMMARY_TYPES,
+  questionsPerQuizMax,
+} from "../../utils/planLimits";
 import {
   aiApi,
   type AiResponse,
@@ -33,7 +46,12 @@ import {
   type QuestionType,
   type SummaryType,
 } from "../../api/aiApi";
-import { parseFlashcards, parseQuizQuestions } from "../../utils/parseAiJson";
+import {
+  parseFlashcards,
+  parseQuizQuestions,
+  type ParsedFlashcard,
+  type ParsedQuizQuestion,
+} from "../../utils/parseAiJson";
 
 interface ResourceAiPanelProps {
   resourceId: string;
@@ -89,46 +107,12 @@ function Toolbar({ children }: { children: ReactNode }) {
   );
 }
 
-function GenerateBtn({ loading, label, onClick }: { loading: boolean; label: string; onClick: () => void }) {
+function GenerateBtn({ loading, label, onClick, disabled }: { loading: boolean; label: string; onClick: () => void; disabled?: boolean }) {
   return (
-    <Button variant="contained" onClick={onClick} disabled={loading} sx={generateButtonSx}>
+    <Button variant="contained" onClick={onClick} disabled={loading || disabled} sx={generateButtonSx}>
       {loading ? <CircularProgress size={22} color="inherit" /> : label}
     </Button>
   );
-}
-
-function FlashcardResult({ result }: { result: AiResponse }) {
-  try {
-    return (
-      <Box>
-        <FlashcardDeck cards={parseFlashcards(result.result)} />
-        <AiMeta result={result} />
-      </Box>
-    );
-  } catch {
-    return (
-      <Alert severity="warning" sx={{ borderRadius: 2 }}>
-        Could not parse flashcards — the AI may have returned invalid JSON. Try generating again.
-      </Alert>
-    );
-  }
-}
-
-function QuizResult({ result }: { result: AiResponse }) {
-  try {
-    return (
-      <Box>
-        <QuizPlayer questions={parseQuizQuestions(result.result)} />
-        <AiMeta result={result} />
-      </Box>
-    );
-  } catch {
-    return (
-      <Alert severity="warning" sx={{ borderRadius: 2 }}>
-        Could not parse quiz — the AI may have returned invalid JSON. Try generating again.
-      </Alert>
-    );
-  }
 }
 
 function EmptyHint({ text }: { text: string }) {
@@ -151,6 +135,9 @@ function EmptyHint({ text }: { text: string }) {
 }
 
 export default function ResourceAiPanel({ resourceId, content, initialTab = 0 }: ResourceAiPanelProps) {
+  const { user } = useAuth();
+  const isPremium = isPremiumTier(user?.role);
+
   const [tab, setTab] = useState(initialTab);
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(false);
@@ -161,20 +148,110 @@ export default function ResourceAiPanel({ resourceId, content, initialTab = 0 }:
 
   const [flashcardCount, setFlashcardCount] = useState(10);
   const [flashcardResult, setFlashcardResult] = useState<AiResponse | null>(null);
+  const [activeFlashcards, setActiveFlashcards] = useState<ParsedFlashcard[]>([]);
+  const [savedDecks, setSavedDecks] = useState<DeckSummary[]>([]);
+  const [selectedDeckId, setSelectedDeckId] = useState<string | null>(null);
+  const [deckSaved, setDeckSaved] = useState(false);
+  const [savingDeck, setSavingDeck] = useState(false);
+  const [deckLimits, setDeckLimits] = useState<{
+    decksUsed: number;
+    decksMax: number;
+    cardsPerDeckMax: number;
+  } | null>(null);
 
   const [questionType, setQuestionType] = useState<QuestionType>("multiple_choice");
   const [difficulty, setDifficulty] = useState<Difficulty>("medium");
   const [quizCount, setQuizCount] = useState(5);
   const [quizResult, setQuizResult] = useState<AiResponse | null>(null);
+  const [activeQuestions, setActiveQuestions] = useState<ParsedQuizQuestion[]>([]);
+  const [savedQuizzes, setSavedQuizzes] = useState<QuizSummary[]>([]);
+  const [selectedQuizId, setSelectedQuizId] = useState<string | null>(null);
+  const [quizSaved, setQuizSaved] = useState(false);
+  const [savingQuiz, setSavingQuiz] = useState(false);
+  const [quizLimits, setQuizLimits] = useState<{
+    quizzesUsed: number;
+    quizzesMax: number;
+    questionsPerQuizMax: number;
+  } | null>(null);
 
   const [chatInput, setChatInput] = useState("");
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+
+  const loadSavedLists = () => {
+    flashcardApi.listDecks(resourceId).then(setSavedDecks).catch(() => setSavedDecks([]));
+    quizApi.listQuizzes(resourceId).then(setSavedQuizzes).catch(() => setSavedQuizzes([]));
+
+    flashcardApi.limits()
+      .then((l) => setDeckLimits({
+        decksUsed: l.decksUsed,
+        decksMax: l.decksMax,
+        cardsPerDeckMax: l.cardsPerDeckMax,
+      }))
+      .catch(async () => {
+        const count = await flashcardApi.count().catch(() => 0);
+        setDeckLimits({
+          decksUsed: count,
+          decksMax: isPremium ? PREMIUM_TIER.maxDecks : FREE_TIER.maxDecks,
+          cardsPerDeckMax: isPremium ? PREMIUM_TIER.maxCardsPerDeck : FREE_TIER.maxCardsPerDeck,
+        });
+      });
+
+    quizApi.limits()
+      .then((l) => setQuizLimits({
+        quizzesUsed: l.quizzesUsed,
+        quizzesMax: l.quizzesMax,
+        questionsPerQuizMax: l.questionsPerQuizMax,
+      }))
+      .catch(async () => {
+        const count = await quizApi.count().catch(() => 0);
+        setQuizLimits({
+          quizzesUsed: count,
+          quizzesMax: isPremium ? PREMIUM_TIER.maxQuizzes : FREE_TIER.maxQuizzes,
+          questionsPerQuizMax: isPremium ? PREMIUM_TIER.maxQuestionsPerQuiz : FREE_TIER.maxQuestionsPerQuiz,
+        });
+      });
+  };
+
+  const cardsMax = cardsPerDeckMax(deckLimits?.cardsPerDeckMax, user?.role);
+  const questionsMax = questionsPerQuizMax(quizLimits?.questionsPerQuizMax, user?.role);
+
+  const flashcardCountOptions = buildCountOptions(cardsMax, [5, 10, 15, 20, 30]);
+  const quizCountOptions = buildCountOptions(questionsMax, [3, 5, 8, 10, 15]);
+
+  const deckAtLimit = deckLimits !== null && deckLimits.decksUsed >= deckLimits.decksMax;
+  const quizAtLimit = quizLimits !== null && quizLimits.quizzesUsed >= quizLimits.quizzesMax;
+
+  useEffect(() => {
+    if (!isPremium && PREMIUM_SUMMARY_TYPES.includes(summaryType as typeof PREMIUM_SUMMARY_TYPES[number])) {
+      setSummaryType("short_summary");
+    }
+  }, [isPremium, summaryType]);
+
+  const summaryOptions = isPremium
+    ? SUMMARY_OPTIONS
+    : SUMMARY_OPTIONS.filter((o) => !PREMIUM_SUMMARY_TYPES.includes(o.value as typeof PREMIUM_SUMMARY_TYPES[number]));
 
   useEffect(() => {
     aiApi.status()
       .then((s: { configured: boolean }) => setConfigured(s.configured))
       .catch(() => setConfigured(false));
   }, []);
+
+  useEffect(() => {
+    if (configured) loadSavedLists();
+  }, [resourceId, configured]);
+
+  useEffect(() => {
+    if (flashcardCount > cardsMax) {
+      setFlashcardCount(flashcardCountOptions[flashcardCountOptions.length - 1]);
+    }
+  }, [cardsMax, flashcardCount, flashcardCountOptions]);
+
+  useEffect(() => {
+    if (quizCount > questionsMax) {
+      setQuizCount(quizCountOptions[quizCountOptions.length - 1]);
+    }
+  }, [questionsMax, quizCount, quizCountOptions]);
 
   const run = async (fn: () => Promise<AiResponse>, onSuccess: (r: AiResponse) => void) => {
     setLoading(true);
@@ -185,6 +262,181 @@ export default function ResourceAiPanel({ resourceId, content, initialTab = 0 }:
       setError(extractErrorMessage(err));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const saveDeck = async (cards: ParsedFlashcard[] = activeFlashcards) => {
+    if (cards.length === 0) return;
+    setSavingDeck(true);
+    try {
+      const deck = await flashcardApi.saveDeck({
+        resourceId,
+        title: `Deck · ${cards.length} cards`,
+        cards,
+      });
+      setDeckSaved(true);
+      setSelectedDeckId(deck.id);
+      loadSavedLists();
+    } catch (err) {
+      setError(extractErrorMessage(err));
+    } finally {
+      setSavingDeck(false);
+    }
+  };
+
+  const saveQuiz = async (questions: ParsedQuizQuestion[] = activeQuestions) => {
+    if (questions.length === 0) return;
+    setSavingQuiz(true);
+    try {
+      const quiz = await quizApi.saveQuiz({
+        resourceId,
+        title: `Quiz · ${questions.length} questions`,
+        questionType,
+        difficulty,
+        questions: questions.map((q) => ({
+          type: q.type,
+          question: q.question,
+          options: q.options,
+          correctAnswer: q.correct_answer,
+          expectedAnswer: q.expected_answer,
+          explanation: q.explanation,
+          difficulty: q.difficulty,
+        })),
+      });
+      setQuizSaved(true);
+      setSelectedQuizId(quiz.id);
+      loadSavedLists();
+    } catch (err) {
+      setError(extractErrorMessage(err));
+    } finally {
+      setSavingQuiz(false);
+    }
+  };
+
+  const generateFlashcards = async () => {
+    if (deckAtLimit) {
+      setError(`Plan limit reached: maximum ${deckLimits?.decksMax ?? 3} saved decks. Delete one to generate more.`);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await aiApi.flashcards({ resourceId, content, count: flashcardCount });
+      setFlashcardResult(result);
+      setDeckSaved(false);
+      setSelectedDeckId(null);
+      let cards: ParsedFlashcard[];
+      try {
+        cards = parseFlashcards(result.result);
+      } catch {
+        setActiveFlashcards([]);
+        setError("Could not parse flashcards from AI response.");
+        return;
+      }
+      setActiveFlashcards(cards);
+      if (!isPremium) {
+        await saveDeck(cards);
+      }
+    } catch (err) {
+      setError(extractErrorMessage(err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const generateQuiz = async () => {
+    if (quizAtLimit) {
+      setError(`Plan limit reached: maximum ${quizLimits?.quizzesMax ?? 3} saved quizzes. Delete one to generate more.`);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await aiApi.quiz({ resourceId, content, questionType, difficulty, count: quizCount });
+      setQuizResult(result);
+      setQuizSaved(false);
+      setSelectedQuizId(null);
+      let questions: ParsedQuizQuestion[];
+      try {
+        questions = parseQuizQuestions(result.result);
+      } catch {
+        setActiveQuestions([]);
+        setError("Could not parse quiz from AI response.");
+        return;
+      }
+      setActiveQuestions(questions);
+      if (!isPremium) {
+        await saveQuiz(questions);
+      }
+    } catch (err) {
+      setError(extractErrorMessage(err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadDeck = async (deckId: string) => {
+    try {
+      const deck = await flashcardApi.getDeck(deckId);
+      setSelectedDeckId(deckId);
+      setDeckSaved(true);
+      setFlashcardResult(null);
+      setActiveFlashcards(deck.cards.map((c) => ({
+        front: c.front,
+        back: c.back,
+        difficulty: c.difficulty,
+        category: c.category,
+      })));
+    } catch (err) {
+      setError(extractErrorMessage(err));
+    }
+  };
+
+  const deleteDeck = async (deckId: string) => {
+    try {
+      await flashcardApi.deleteDeck(deckId);
+      if (selectedDeckId === deckId) {
+        setSelectedDeckId(null);
+        setActiveFlashcards([]);
+        setDeckSaved(false);
+      }
+      loadSavedLists();
+    } catch (err) {
+      setError(extractErrorMessage(err));
+    }
+  };
+
+  const loadQuiz = async (quizId: string) => {
+    try {
+      const quiz = await quizApi.getQuiz(quizId);
+      setSelectedQuizId(quizId);
+      setQuizSaved(true);
+      setQuizResult(null);
+      setActiveQuestions(quiz.questions.map((q) => ({
+        type: q.type as ParsedQuizQuestion["type"],
+        question: q.question,
+        options: q.options,
+        correct_answer: q.correctAnswer,
+        expected_answer: q.expectedAnswer,
+        explanation: q.explanation,
+        difficulty: q.difficulty,
+      })));
+    } catch (err) {
+      setError(extractErrorMessage(err));
+    }
+  };
+
+  const deleteQuiz = async (quizId: string) => {
+    try {
+      await quizApi.deleteQuiz(quizId);
+      if (selectedQuizId === quizId) {
+        setSelectedQuizId(null);
+        setActiveQuestions([]);
+        setQuizSaved(false);
+      }
+      loadSavedLists();
+    } catch (err) {
+      setError(extractErrorMessage(err));
     }
   };
 
@@ -300,11 +552,16 @@ export default function ResourceAiPanel({ resourceId, content, initialTab = 0 }:
 
         {tab === 0 && (
           <Box>
+            {!isPremium && (
+              <Alert severity="info" sx={{ mb: 2, borderRadius: 2 }}>
+                Free plan includes short, detailed, beginner, and advanced summaries. Upgrade to Premium for bullet points and key takeaways.
+              </Alert>
+            )}
             <Toolbar>
               <FormControl size="small" sx={{ minWidth: 220 }}>
                 <InputLabel>Summary type</InputLabel>
                 <Select value={summaryType} label="Summary type" onChange={(e) => setSummaryType(e.target.value as SummaryType)}>
-                  {SUMMARY_OPTIONS.map((o) => (
+                  {summaryOptions.map((o) => (
                     <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>
                   ))}
                 </Select>
@@ -326,18 +583,55 @@ export default function ResourceAiPanel({ resourceId, content, initialTab = 0 }:
               <FormControl size="small" sx={{ minWidth: 140 }}>
                 <InputLabel>Count</InputLabel>
                 <Select value={flashcardCount} label="Count" onChange={(e) => setFlashcardCount(Number(e.target.value))}>
-                  {[5, 10, 15, 20, 30].map((n) => (
+                  {flashcardCountOptions.map((n) => (
                     <MenuItem key={n} value={n}>{n} cards</MenuItem>
                   ))}
                 </Select>
               </FormControl>
-              <GenerateBtn loading={loading} label="Generate Flashcards" onClick={() => run(
-                () => aiApi.flashcards({ resourceId, content, count: flashcardCount }),
-                setFlashcardResult
-              )} />
+              <GenerateBtn
+                loading={loading}
+                disabled={deckAtLimit}
+                label={deckAtLimit ? "Deck limit reached" : "Generate Flashcards"}
+                onClick={generateFlashcards}
+              />
             </Toolbar>
-            {flashcardResult ? <FlashcardResult result={flashcardResult} /> : (
-              <EmptyHint text="Generate flip cards to study key concepts from this material." />
+            {!isPremium && (
+              <Alert severity="info" sx={{ mb: 2, borderRadius: 2 }}>
+                Free plan: flashcards are auto-saved when generated (max {deckLimits?.decksMax ?? 3} decks, {cardsMax} cards each).
+              </Alert>
+            )}
+            <SavedItemsBar
+              label="Decks"
+              items={savedDecks.map((d) => ({
+                id: d.id,
+                title: d.title,
+                count: d.cardCount,
+                createdAt: d.createdAt,
+              }))}
+              selectedId={selectedDeckId}
+              saving={savingDeck}
+              saved={deckSaved}
+              autoSave={!isPremium}
+              canSave={
+                activeFlashcards.length > 0
+                && activeFlashcards.length <= cardsMax
+              }
+              used={deckLimits?.decksUsed}
+              max={deckLimits?.decksMax}
+              perItemMax={cardsMax}
+              perItemLabel="cards per deck"
+              onSelect={loadDeck}
+              onSave={() => saveDeck()}
+              onDelete={deleteDeck}
+              onRefresh={loadSavedLists}
+            />
+            {activeFlashcards.length > 0 ? (
+              <Box>
+                <FlashcardDeck cards={activeFlashcards} />
+                {flashcardResult && <AiMeta result={flashcardResult} />}
+              </Box>
+            ) : (
+              <EmptyHint text="Generate flip cards or load a saved deck to study." />
             )}
           </Box>
         )}
@@ -364,18 +658,55 @@ export default function ResourceAiPanel({ resourceId, content, initialTab = 0 }:
               <FormControl size="small" sx={{ minWidth: 100 }}>
                 <InputLabel>Count</InputLabel>
                 <Select value={quizCount} label="Count" onChange={(e) => setQuizCount(Number(e.target.value))}>
-                  {[3, 5, 10, 15].map((n) => (
+                  {quizCountOptions.map((n) => (
                     <MenuItem key={n} value={n}>{n}</MenuItem>
                   ))}
                 </Select>
               </FormControl>
-              <GenerateBtn loading={loading} label="Generate Quiz" onClick={() => run(
-                () => aiApi.quiz({ resourceId, content, questionType, difficulty, count: quizCount }),
-                setQuizResult
-              )} />
+              <GenerateBtn
+                loading={loading}
+                disabled={quizAtLimit}
+                label={quizAtLimit ? "Quiz limit reached" : "Generate Quiz"}
+                onClick={generateQuiz}
+              />
             </Toolbar>
-            {quizResult ? <QuizResult result={quizResult} /> : (
-              <EmptyHint text="Generate an interactive quiz to test your understanding." />
+            {!isPremium && (
+              <Alert severity="info" sx={{ mb: 2, borderRadius: 2 }}>
+                Free plan: quizzes are auto-saved when generated (max {quizLimits?.quizzesMax ?? 3} quizzes, {questionsMax} questions each).
+              </Alert>
+            )}
+            <SavedItemsBar
+              label="Quizzes"
+              items={savedQuizzes.map((q) => ({
+                id: q.id,
+                title: q.title,
+                count: q.questionCount,
+                createdAt: q.createdAt,
+              }))}
+              selectedId={selectedQuizId}
+              saving={savingQuiz}
+              saved={quizSaved}
+              autoSave={!isPremium}
+              canSave={
+                activeQuestions.length > 0
+                && activeQuestions.length <= questionsMax
+              }
+              used={quizLimits?.quizzesUsed}
+              max={quizLimits?.quizzesMax}
+              perItemMax={questionsMax}
+              perItemLabel="questions per quiz"
+              onSelect={loadQuiz}
+              onSave={() => saveQuiz()}
+              onDelete={deleteQuiz}
+              onRefresh={loadSavedLists}
+            />
+            {activeQuestions.length > 0 ? (
+              <Box>
+                <QuizPlayer questions={activeQuestions} savedQuizId={selectedQuizId} />
+                {quizResult && <AiMeta result={quizResult} />}
+              </Box>
+            ) : (
+              <EmptyHint text="Generate a quiz or load a saved one to test yourself." />
             )}
           </Box>
         )}

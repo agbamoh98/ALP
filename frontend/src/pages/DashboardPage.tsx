@@ -22,17 +22,28 @@ import { useNavigate } from "react-router-dom";
 import Layout from "../components/layout/Layout";
 import { useAuth } from "../context/AuthContext";
 import { resourceApi, type ResourceListItem } from "../api/resourceApi";
+import { flashcardApi } from "../api/flashcardApi";
+import { quizApi } from "../api/quizApi";
+import { isPremiumTier } from "../utils/planLimits";
 
 export default function DashboardPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [resourceCount, setResourceCount] = useState<number | null>(null);
+  const [deckCount, setDeckCount] = useState<number | null>(null);
+  const [quizCount, setQuizCount] = useState<number | null>(null);
   const [resources, setResources] = useState<ResourceListItem[]>([]);
 
   useEffect(() => {
     resourceApi.count()
       .then(setResourceCount)
       .catch(() => setResourceCount(0));
+    flashcardApi.count()
+      .then(setDeckCount)
+      .catch(() => setDeckCount(0));
+    quizApi.count()
+      .then(setQuizCount)
+      .catch(() => setQuizCount(0));
     resourceApi.list()
       .then(setResources)
       .catch(() => setResources([]));
@@ -83,8 +94,8 @@ export default function DashboardPage() {
 
   const stats = [
     { label: "Resources", value: resourceCount !== null ? String(resourceCount) : "…", icon: <CloudUpload />, color: "#6C63FF", onClick: () => navigate("/resources") },
-    { label: "Flashcards", value: "0", icon: <AutoStories />, color: "#22C55E", onClick: () => {} },
-    { label: "Quizzes Taken", value: "0", icon: <Quiz />, color: "#F59E0B", onClick: () => {} },
+    { label: "Flashcard Decks", value: deckCount !== null ? String(deckCount) : "…", icon: <AutoStories />, color: "#22C55E", onClick: () => openResourceAi(1) },
+    { label: "Saved Quizzes", value: quizCount !== null ? String(quizCount) : "…", icon: <Quiz />, color: "#F59E0B", onClick: () => openResourceAi(2) },
     { label: "Study Minutes", value: "0", icon: <TrendingUp />, color: "#FF6584", onClick: () => {} },
   ];
 
@@ -108,15 +119,15 @@ export default function DashboardPage() {
               Ready to learn something today?
             </Typography>
             <Chip
-              label={`${user?.role} Plan`}
+              label={`${user?.role ?? "FREE"} Plan`}
               size="small"
               sx={{
                 mt: 1.5,
                 bgcolor:
-                  user?.role === "PREMIUM"
+                  isPremiumTier(user?.role)
                     ? "rgba(255, 101, 132, 0.1)"
                     : "rgba(108, 99, 255, 0.1)",
-                color: user?.role === "PREMIUM" ? "#FF6584" : "#6C63FF",
+                color: isPremiumTier(user?.role) ? "#FF6584" : "#6C63FF",
                 fontWeight: 600,
               }}
             />

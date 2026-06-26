@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   Box,
   Container,
@@ -35,6 +35,13 @@ export default function UploadPage() {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [resourceLimits, setResourceLimits] = useState<{ used: number; max: number; plan: string } | null>(null);
+
+  useEffect(() => {
+    resourceApi.limits().then(setResourceLimits).catch(() => setResourceLimits(null));
+  }, []);
+
+  const atResourceLimit = resourceLimits !== null && resourceLimits.used >= resourceLimits.max;
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
@@ -113,9 +120,20 @@ export default function UploadPage() {
           <Typography variant="h4" fontWeight={700} sx={{ mb: 0.5 }}>
             Upload Learning Resource
           </Typography>
-          <Typography color="text.secondary" sx={{ mb: 4 }}>
+          <Typography color="text.secondary" sx={{ mb: 2 }}>
             Upload a PDF or paste text — ALP will extract and store the content for AI features.
           </Typography>
+
+          {resourceLimits && (
+            <Alert
+              severity={atResourceLimit ? "warning" : "info"}
+              sx={{ mb: 3, borderRadius: 2 }}
+            >
+              {atResourceLimit
+                ? `You've saved ${resourceLimits.used}/${resourceLimits.max} resources on your ${resourceLimits.plan} plan. Delete one from your library to upload more.`
+                : `Resources saved: ${resourceLimits.used}/${resourceLimits.max} (${resourceLimits.plan} plan)`}
+            </Alert>
+          )}
 
           {error && (
             <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>
@@ -198,7 +216,7 @@ export default function UploadPage() {
                     variant="contained"
                     size="large"
                     fullWidth
-                    disabled={!selectedFile || uploading}
+                    disabled={!selectedFile || uploading || atResourceLimit}
                     onClick={handleUploadPdf}
                     sx={{ background: "linear-gradient(135deg, #6C63FF, #FF6584)", height: 52 }}
                   >
@@ -237,7 +255,7 @@ export default function UploadPage() {
                     variant="contained"
                     size="large"
                     fullWidth
-                    disabled={!textTitle.trim() || !textContent.trim() || uploading}
+                    disabled={!textTitle.trim() || !textContent.trim() || uploading || atResourceLimit}
                     onClick={handleUploadText}
                     sx={{ background: "linear-gradient(135deg, #6C63FF, #FF6584)", height: 52 }}
                   >

@@ -2,6 +2,7 @@ server:
   port: 8085
   servlet:
     context-path: /api/flashcards
+
 spring:
   application:
     name: flashcard-service
@@ -13,8 +14,27 @@ spring:
     hibernate:
       ddl-auto: update
     show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+jwt:
+  secret: ${JWT_SECRET:alp-dev-secret-key-minimum-256-bits-long-for-hs256-algorithm-ok}
+
+limits:
+  decks:
+    free: ${FREE_MAX_DECKS:3}
+    premium: ${PREMIUM_MAX_DECKS:50}
+  cards-per-deck:
+    free: ${FREE_MAX_CARDS_PER_DECK:15}
+    premium: ${PREMIUM_MAX_CARDS_PER_DECK:30}
+
 management:
   endpoints:
     web:
       exposure:
         include: health, info
+
+logging:
+  level:
+    com.alp.flashcard: DEBUG

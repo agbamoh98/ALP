@@ -6,6 +6,7 @@ import com.alp.ai.model.AiUsage;
 import com.alp.ai.prompt.PromptService;
 import com.alp.ai.provider.OpenAiClient;
 import com.alp.ai.repository.AiUsageRepository;
+import com.alp.ai.util.TierLimits;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -29,7 +30,8 @@ public class AiService {
     private int maxContentChars;
 
     @Transactional
-    public AiResponse summarize(SummarizeRequest request, UUID userId) {
+    public AiResponse summarize(SummarizeRequest request, UUID userId, String userRole) {
+        TierLimits.enforceSummaryType(userRole, request.getSummaryType());
         var prompt = promptService.getSummarizer();
         String content = truncate(request.getContent());
 

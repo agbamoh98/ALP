@@ -20,6 +20,7 @@ import {
   Refresh,
 } from "@mui/icons-material";
 import type { ParsedQuizQuestion } from "../../utils/parseAiJson";
+import { quizApi } from "../../api/quizApi";
 import {
   GRADIENT_QUIZ,
   QUIZ_SHADOW,
@@ -30,6 +31,7 @@ import {
 
 interface QuizPlayerProps {
   questions: ParsedQuizQuestion[];
+  savedQuizId?: string | null;
 }
 
 type Answers = Record<number, string | boolean>;
@@ -91,7 +93,7 @@ function ScoreRing({ score, total }: { score: number; total: number }) {
   );
 }
 
-export default function QuizPlayer({ questions }: QuizPlayerProps) {
+export default function QuizPlayer({ questions, savedQuizId }: QuizPlayerProps) {
   const [answers, setAnswers] = useState<Answers>({});
   const [submitted, setSubmitted] = useState(false);
   const [current, setCurrent] = useState(0);
@@ -118,6 +120,14 @@ export default function QuizPlayer({ questions }: QuizPlayerProps) {
     setAnswers({});
     setSubmitted(false);
     setCurrent(0);
+  };
+
+  const handleSubmit = () => {
+    const finalScore = questions.filter((question, i) => isCorrect(question, answers[i])).length;
+    setSubmitted(true);
+    if (savedQuizId) {
+      quizApi.saveAttempt(savedQuizId, finalScore, questions.length).catch(() => {});
+    }
   };
 
   if (submitted) {
@@ -440,7 +450,7 @@ export default function QuizPlayer({ questions }: QuizPlayerProps) {
         ) : (
           <Button
             variant="contained"
-            onClick={() => setSubmitted(true)}
+            onClick={handleSubmit}
             disabled={answeredCount < questions.length}
             sx={{
               px: 4,

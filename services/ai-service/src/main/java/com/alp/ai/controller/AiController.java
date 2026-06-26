@@ -31,7 +31,7 @@ public class AiController {
             @Valid @RequestBody SummarizeRequest request,
             @AuthenticationPrincipal AuthenticatedUser user
     ) {
-        return ResponseEntity.ok(aiService.summarize(request, user.getId()));
+        return ResponseEntity.ok(aiService.summarize(request, user.getId(), user.getRole()));
     }
 
     @PostMapping("/flashcards")
