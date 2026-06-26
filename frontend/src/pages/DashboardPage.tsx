@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import {
   Box,
   Container,
@@ -17,49 +18,75 @@ import {
   Psychology,
   Add,
 } from "@mui/icons-material";
+import { useNavigate } from "react-router-dom";
 import Layout from "../components/layout/Layout";
 import { useAuth } from "../context/AuthContext";
-
-const quickActions = [
-  {
-    icon: <CloudUpload sx={{ fontSize: 28, color: "#6C63FF" }} />,
-    title: "Upload Resource",
-    description: "Add a PDF or paste text to study",
-    color: "rgba(108, 99, 255, 0.08)",
-    available: false,
-  },
-  {
-    icon: <Psychology sx={{ fontSize: 28, color: "#FF6584" }} />,
-    title: "AI Tutor",
-    description: "Ask questions about your material",
-    color: "rgba(255, 101, 132, 0.08)",
-    available: false,
-  },
-  {
-    icon: <AutoStories sx={{ fontSize: 28, color: "#22C55E" }} />,
-    title: "Flashcards",
-    description: "Review and practice flashcards",
-    color: "rgba(34, 197, 94, 0.08)",
-    available: false,
-  },
-  {
-    icon: <Quiz sx={{ fontSize: 28, color: "#F59E0B" }} />,
-    title: "Take a Quiz",
-    description: "Test your knowledge",
-    color: "rgba(245, 158, 11, 0.08)",
-    available: false,
-  },
-];
-
-const stats = [
-  { label: "Resources", value: "0", icon: <CloudUpload />, color: "#6C63FF" },
-  { label: "Flashcards", value: "0", icon: <AutoStories />, color: "#22C55E" },
-  { label: "Quizzes Taken", value: "0", icon: <Quiz />, color: "#F59E0B" },
-  { label: "Study Minutes", value: "0", icon: <TrendingUp />, color: "#FF6584" },
-];
+import { resourceApi, type ResourceListItem } from "../api/resourceApi";
 
 export default function DashboardPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const [resourceCount, setResourceCount] = useState<number | null>(null);
+  const [resources, setResources] = useState<ResourceListItem[]>([]);
+
+  useEffect(() => {
+    resourceApi.count()
+      .then(setResourceCount)
+      .catch(() => setResourceCount(0));
+    resourceApi.list()
+      .then(setResources)
+      .catch(() => setResources([]));
+  }, []);
+
+  const openResourceAi = (aiTab: number) => {
+    if (resources.length > 0) {
+      navigate(`/resources/${resources[0].id}`, { state: { aiTab } });
+    } else {
+      navigate("/upload");
+    }
+  };
+
+  const quickActions = [
+    {
+      icon: <CloudUpload sx={{ fontSize: 28, color: "#6C63FF" }} />,
+      title: "Upload Resource",
+      description: "Add a PDF or paste text to study",
+      color: "rgba(108, 99, 255, 0.08)",
+      available: true,
+      onClick: () => navigate("/upload"),
+    },
+    {
+      icon: <Psychology sx={{ fontSize: 28, color: "#FF6584" }} />,
+      title: "AI Tutor",
+      description: "Ask questions about your material",
+      color: "rgba(255, 101, 132, 0.08)",
+      available: true,
+      onClick: () => openResourceAi(3),
+    },
+    {
+      icon: <AutoStories sx={{ fontSize: 28, color: "#22C55E" }} />,
+      title: "Flashcards",
+      description: "Generate flashcards from a resource",
+      color: "rgba(34, 197, 94, 0.08)",
+      available: true,
+      onClick: () => openResourceAi(1),
+    },
+    {
+      icon: <Quiz sx={{ fontSize: 28, color: "#F59E0B" }} />,
+      title: "Take a Quiz",
+      description: "Generate a quiz from a resource",
+      color: "rgba(245, 158, 11, 0.08)",
+      available: true,
+      onClick: () => openResourceAi(2),
+    },
+  ];
+
+  const stats = [
+    { label: "Resources", value: resourceCount !== null ? String(resourceCount) : "…", icon: <CloudUpload />, color: "#6C63FF", onClick: () => navigate("/resources") },
+    { label: "Flashcards", value: "0", icon: <AutoStories />, color: "#22C55E", onClick: () => {} },
+    { label: "Quizzes Taken", value: "0", icon: <Quiz />, color: "#F59E0B", onClick: () => {} },
+    { label: "Study Minutes", value: "0", icon: <TrendingUp />, color: "#FF6584", onClick: () => {} },
+  ];
 
   const greeting = () => {
     const hour = new Date().getHours();
@@ -99,7 +126,7 @@ export default function DashboardPage() {
           <Grid container spacing={3} sx={{ mb: 5 }}>
             {stats.map((stat) => (
               <Grid item xs={6} md={3} key={stat.label}>
-                <Card sx={{ height: "100%" }}>
+                <Card sx={{ height: "100%", cursor: "pointer" }} onClick={stat.onClick}>
                   <CardContent sx={{ p: 3 }}>
                     <Box
                       sx={{
@@ -141,6 +168,7 @@ export default function DashboardPage() {
                 >
                   <CardActionArea
                     disabled={!action.available}
+                    onClick={action.onClick}
                     sx={{ height: "100%" }}
                   >
                     <CardContent sx={{ p: 3 }}>
@@ -163,7 +191,7 @@ export default function DashboardPage() {
                       </Typography>
                       {!action.available && (
                         <Chip
-                          label="Coming in v0.2"
+                          label="Coming in v0.3"
                           size="small"
                           sx={{ mt: 1.5, fontSize: "0.7rem" }}
                         />
@@ -175,7 +203,7 @@ export default function DashboardPage() {
             ))}
           </Grid>
 
-          {/* Empty State */}
+          {resourceCount === 0 && (
           <Card
             sx={{
               p: 2,
@@ -202,17 +230,16 @@ export default function DashboardPage() {
                 No learning resources yet
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Upload a PDF or paste text to get started.
-                <br />
-                Resource upload is coming in Version 0.2.
+                Upload a PDF or paste text to get started with AI summaries, flashcards, and quizzes.
               </Typography>
             </CardContent>
           </Card>
+          )}
 
           {/* Version badge */}
           <Stack direction="row" justifyContent="center" sx={{ mt: 6 }}>
             <Chip
-              label="Version 0.1 — Foundation"
+              label="Version 0.3 — Basic AI"
               variant="outlined"
               size="small"
               sx={{ color: "text.secondary", borderColor: "divider" }}

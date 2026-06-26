@@ -10,9 +10,13 @@ spring:
     properties:
       hibernate:
         dialect: org.hibernate.dialect.H2Dialect
+jwt:
+  secret: test-secret-key-must-be-at-least-256-bits-long-for-testing
 ai:
   provider: openai
+  prompts-dir: ../../prompts
   openai:
     api-key: test-key
     model: gpt-4o-mini
     max-tokens: 100
+    temperature: 0.7

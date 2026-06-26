@@ -3,6 +3,9 @@ import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import DashboardPage from "./pages/DashboardPage";
+import UploadPage from "./pages/UploadPage";
+import ResourceLibraryPage from "./pages/ResourceLibraryPage";
+import ResourceViewerPage from "./pages/ResourceViewerPage";
 import NotFoundPage from "./pages/NotFoundPage";
 import ProtectedRoute from "./components/common/ProtectedRoute";
 
@@ -15,6 +18,9 @@ export default function App() {
 
       <Route element={<ProtectedRoute />}>
         <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/upload" element={<UploadPage />} />
+        <Route path="/resources" element={<ResourceLibraryPage />} />
+        <Route path="/resources/:id" element={<ResourceViewerPage />} />
       </Route>
 
       <Route path="/404" element={<NotFoundPage />} />

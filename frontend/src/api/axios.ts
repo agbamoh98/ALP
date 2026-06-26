@@ -14,14 +14,21 @@ apiClient.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  // FormData must not use application/json — axios sets multipart boundary automatically
+  if (config.data instanceof FormData) {
+    delete config.headers["Content-Type"];
+  }
   return config;
 });
 
-// Handle 401 globally — redirect to login
+// Only force logout on 401 from the auth service (invalid/expired session).
+// Resource/AI services may return 401 for config issues — let pages show errors instead.
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const status = error.response?.status;
+    const url: string = error.config?.url ?? "";
+    if (status === 401 && url.includes("/api/auth/")) {
       localStorage.removeItem(TOKEN_KEY);
       window.location.href = "/login";
     }

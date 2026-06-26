@@ -46,6 +46,7 @@ export interface LearningResource {
   id: string;
   title: string;
   type: ResourceType;
+  content?: string;
   fileSize: number;
   createdAt: string;
   updatedAt: string;

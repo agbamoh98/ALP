@@ -95,6 +95,18 @@ export default function Navbar({ transparent = false }: Props) {
                 >
                   Dashboard
                 </Button>
+                <Button
+                  onClick={() => navigate("/resources")}
+                  sx={{ color: transparent ? "white" : "text.primary" }}
+                >
+                  Library
+                </Button>
+                <Button
+                  onClick={() => navigate("/upload")}
+                  sx={{ color: transparent ? "white" : "text.primary" }}
+                >
+                  Upload
+                </Button>
                 <IconButton onClick={handleAvatarClick} sx={{ ml: 1 }}>
                   <Avatar
                     sx={{

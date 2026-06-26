@@ -18,6 +18,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Map;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -66,7 +68,11 @@ public class AuthService {
     }
 
     private AuthResponse buildAuthResponse(User user) {
-        String token = jwtService.generateToken(user);
+        Map<String, Object> extraClaims = Map.of(
+                "userId", user.getId().toString(),
+                "role", user.getRole().name()
+        );
+        String token = jwtService.generateToken(extraClaims, user);
 
         return AuthResponse.builder()
                 .user(UserDto.from(user))

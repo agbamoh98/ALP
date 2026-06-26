@@ -17,12 +17,22 @@ spring:
       ddl-auto: update
     show-sql: false
 
+jwt:
+  secret: ${JWT_SECRET:alp-dev-secret-key-minimum-256-bits-long-for-hs256-algorithm-ok}
+
+# ── AI provider settings ──────────────────────────────────────────────────────
+# TESTING: gpt-4o-mini is cheap (~$0.15/1M input tokens). Change OPENAI_MODEL
+# in production or for premium tiers (e.g. gpt-4o, gpt-4.1) — see .env.example.
 ai:
   provider: ${AI_PROVIDER:openai}
+  prompts-dir: ${PROMPTS_DIR:../../prompts}
+  max-content-chars: ${AI_MAX_CONTENT_CHARS:12000}
   openai:
     api-key: ${OPENAI_API_KEY:}
+    # Cheap default for dev/testing — override via OPENAI_MODEL env var later
     model: ${OPENAI_MODEL:gpt-4o-mini}
     max-tokens: ${OPENAI_MAX_TOKENS:2048}
+    temperature: ${OPENAI_TEMPERATURE:0.7}
 
 management:
   endpoints:
